@@ -25,7 +25,7 @@ PrintAggregateCPUUsagePercent() {
     bash_only=1                       # 1=[use only bash arithmatic) 0=[use bc]
     printf_scale=1                    # If bc is used, how many decimal places to show
     printf_minwidth=3                 # Minimum width for printf field, padded with leading spaces (NOTE GNU printf does not support min width modifier for %s)
-    bc_scale=$(( printf_scale + 1 ))  # bc_scale must be one higher than printf_scale for rounding
+    bc_scale=$(( printf_scale + 1 ))  # bc_scale must be one higher than printf_scale for rounding (NOTE bash only truncates instead of rounding)
     num_samples=4                     # total_avg = tally / ( num_samples - 1 )
     sample_period_seconds="0.25"      # Time in seconds to sleep between iterations
     print_newline=1                   # 1=[Print a newline after n%] 0=[Do not print a newline after n%]
@@ -75,7 +75,7 @@ PrintAggregateCPUUsagePercent() {
                         fi
                     }
 
-                    [ $i -gt 1 ] && echo "($((i-1))) usage: $usage_percent tally: $tally" # For debug and double-checking results
+                    #[ $i -gt 1 ] && echo "($((i-1))) usage: $usage_percent tally: $tally" # For debug and double-checking results
 
                     prev_idle=$idle
                     prev_total=$total
