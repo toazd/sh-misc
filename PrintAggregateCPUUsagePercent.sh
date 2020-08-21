@@ -22,10 +22,10 @@ set -hu
 
 PrintAggregateCPUUsagePercent() {
 
-    bash_only=1                       # 1=[use only bash arithmatic) 0=[use bc]
+    shell_only=1                      # 1=[use only shell arithmatic) 0=[use bc]
     printf_scale=1                    # If bc is used, how many decimal places to show
     printf_minwidth=3                 # Minimum width for printf field, padded with leading spaces (NOTE GNU printf does not support min width modifier for %s)
-    bc_scale=$(( printf_scale + 1 ))  # bc_scale must be one higher than printf_scale for rounding (NOTE bash only truncates instead of rounding)
+    bc_scale=$(( printf_scale + 1 ))  # bc_scale must be one higher than printf_scale for rounding (NOTE shell only truncates instead of rounding)
     num_samples=4                     # total_avg = tally / ( num_samples - 1 )
     sample_period_seconds="0.25"      # Time in seconds to sleep between iterations
     print_newline=1                   # 1=[Print a newline after n%] 0=[Do not print a newline after n%]
@@ -66,10 +66,10 @@ PrintAggregateCPUUsagePercent() {
 
                     # Skip the first iteration
                     [ $i -gt 0 ] && {
-                        if [ $bash_only -eq 1 ]; then
+                        if [ $shell_only -eq 1 ]; then
                             usage_percent=$(( (delta_total - delta_idle) * 100 / delta_total ))
                             [ $i -gt 1 ] && tally=$(( tally + usage_percent ))
-                        elif [ $bash_only -eq 0 ]; then
+                        elif [ $shell_only -eq 0 ]; then
                             usage_percent=$( echo "scale=$bc_scale; (($delta_total - $delta_idle) *100) / $delta_total" | bc -l )
                             [ $i -gt 1 ] && tally=$( echo "scale=$bc_scale; ($tally + $usage_percent)" | bc -l )
                         fi
@@ -88,7 +88,7 @@ PrintAggregateCPUUsagePercent() {
     done
 
     [ $i -eq $(( num_samples + 2 )) ] && {
-        if [ $bash_only -eq 1 ]; then
+        if [ $shell_only -eq 1 ]; then
             total_avg=$(( tally / num_samples ))
             if [ $total_avg -gt 0 ]; then
                 if [ $print_newline -eq 1 ]; then
@@ -103,7 +103,7 @@ PrintAggregateCPUUsagePercent() {
                     printf '%s' "<1%"
                 fi
             fi
-        elif [ $bash_only -eq 0 ]; then
+        elif [ $shell_only -eq 0 ]; then
             total_avg=$( echo "scale=$bc_scale; ($tally / $num_samples)" | bc -l )
             total_avg=$( printf "%${printf_minwidth}.${printf_scale}f" "$total_avg" )
             if [ $print_newline -eq 1 ]; then
