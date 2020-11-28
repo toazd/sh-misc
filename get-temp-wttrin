@@ -1,0 +1,63 @@
+#!/bin/sh
+# shellcheck disable=SC2034
+# USAGE:
+#   ./get-temp-wttrin <location> <optional unit: [cC]|[fF]>
+#
+# NOTES:
+#   https://wttr.in/:help
+#   https://github.com/chubin/wttr.in/blob/master/README.md
+#
+#   Supported location types:
+#     /paris                  # city name
+#     /~Eiffel+tower          # any location (+ for spaces)
+#     /Москва                 # Unicode name of any location in any language
+#     /muc                    # airport code (3 letters)
+#     /@stackoverflow.com     # domain name
+#     /94107                  # area codes
+#     /-78.46,106.79          # GPS coordinates
+
+location=${1:-'39.845131,-77.559120'}
+req_unit=${2:-'u'}
+degrees='°'
+sign=''
+nocloud='盛'
+cloud=''
+rain=''
+snow=''
+storm=''
+temp_low=10
+temp_high=27
+lotempicon=''
+midtempicon=''
+hitempicon=''
+
+case $req_unit in
+    (c*|C*) req_unit='mM' ;;
+    (f*|F*) req_unit='u' ;;
+    (*) req_unit='u' ;;
+esac
+
+while IFS= read -r curl_response || [ -n "$curl_response" ]
+do
+    curl_response=$(printf '%s' "$curl_response" | sed -e 's|[[:space:]]||g')
+    curr_weath=${curl_response%'|'*}
+    unit=${curl_response#*'°'}
+    curr_temp=${curl_response%'°'*}
+
+    # Record if there is a negative "-" sign
+    case $curr_temp in
+        (*'-'*) sign='-' ;;
+        (*) sign='' ;;
+    esac
+    # Remove a minus "-" or a plus "+" sign and also remove anything to the left of it
+    curr_temp=${curr_temp#*[-+]}
+
+    if [ -n "$curr_temp" ]
+    then
+        printf '%s %5s' "$curr_weath" "${sign}${curr_temp}${degrees}${unit}"
+    else
+        printf '%s' "?"
+    fi
+done <<EOC
+$(curl -sL https://wttr.in/"${location}?${req_unit}"0qQTF\&lang=en\&format="%c|%t")
+EOC
