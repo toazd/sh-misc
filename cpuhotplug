@@ -1,0 +1,278 @@
+#!/bin/sh
+# shellcheck disable=SC2320
+# https://www.shellcheck.net/wiki/SC2320
+# Needed because we want the exit code of echo
+#
+# A very simple script to set /sys/devices/system/cpu/cpu*/online
+# to 1 or 0 (online or offline). Note that cpu0 is ignored.
+#
+# No matter which mode you choose cpus are set online/offline in linear
+# order begining with online nodes first and ending with the offline nodes
+#
+# For example (16 nodes, cpu0-cpu15):
+# cpuhotplug offline 4
+# will set cpu1-11 to online and cpu12-15 to offline
+# cpuhotplug online 6
+# will set cpu1-5 to online and cpu6-15 to offline
+#
+# NOTE the exit codes of this script are not proper so don't rely on them
+#
+#
+# LICENSE: CC0 1.0 Universal
+# https://creativecommons.org/public-domain/cc0/
+#
+# Doc for CONFIG_HOTPLUG_CPU kernel feature
+# https://docs.kernel.org/core-api/cpu_hotplug.html
+#
+# POSIX BRE reference
+# https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html
+#
+# SPECIAL NOTE
+# Aside from the status output, this script ignores cpu0, so if for any reason
+# you need to set cpu0 offline you will need to modify this script accordingly.
+# Refer to CONFIG_HOTPLUG_CPU kernel doc link above for kernel parameters to
+# enable that feature (cpu0_hotplug).
+
+show_help() {
+	echo "$(basename "$0") [mode] [mode_argument]"
+	echo "modes          = st/status/info OR on/online/off/offline"
+	echo "mode_arguments = a/all/#"
+	echo
+	echo "In status mode, no mode_argument is required"
+	echo
+	echo "Note that cpu0 is ignored except for when calculating how many"
+	echo "cpu's to set online/offline (and then it is counted as one)"
+	echo
+	echo "Examples:"
+	echo "To set all present cpu's to offline except cpu0:"
+	echo "$(basename "$0") offline all"
+	echo
+	echo "To set cpu1-3 to online, and 4-15 to offline (out of 16 total):"
+	echo "$(basename "$0") online 4 = $(basename "$0") offline 12"
+	echo
+	echo "To set cpu1-7 to online, and 8-15 to offline (out of 16 total):"
+	echo "$(basename "$0") offline 8 = $(basename "$0") online 8"
+	exit
+}
+
+# look for help positional parameters,
+# the wrong number of positional parameters,
+# or for no positional parameters.
+if [ "$#" -eq 0 ] || [ "$#" -lt 1 ] || [ "$#" -gt 2 ] || [ "$1" = "-h" ] || [ "$1" = "-help" ] || [ "$1" = "--help" ] || [ "$1" = "help" ]; then
+	show_help
+fi
+
+# set the mode based on input
+case $1 in
+	on | online) mode="online" ;;
+	off | offline) mode="offline" ;;
+	st | status | info) mode="status" ;;
+	*)
+		echo "Invalid mode specified"
+		show_help
+		;;
+esac
+
+# status mode does not require root permissions
+if [ "$mode" != "status" ]; then
+
+	# script must be run with sudo/doas/etc.
+	[ "$(id -u)" != 0 ] && {
+		echo "Writing to /sys/devices/system/cpu/cpu*/online requires root permissions."
+		exit
+	}
+
+	# set the mode argument
+	case $2 in
+		a | all) arg=all ;;
+		[1-9]*) arg=$2 ;;
+		*)
+			echo "Invalid mode argument"
+			show_help
+			;;
+	esac
+fi
+
+# get the total cpus present in the system
+present=$(cat /sys/devices/system/cpu/present)
+# remove everything upto and including the dash - (eg. "0-15" => "15")
+present="${present#*-}"
+
+# if $arg is not empty and is all digits and the supplied number of cpus
+# is greater than the number of present cpus, issue a warning and set $arg to "all"
+if [ -n "$arg" ] && [ "$(expr "$arg" : '[a-zA-Z]*')" = 0 ]; then
+	[ "$arg" -gt "$present" ] && {
+		echo "WARNING: Supplied number of cpus ($arg) is greater than present number of cpus ($present)"
+		arg="all" # NOTE do not set this to $present or you will introduce bugs below
+	}
+fi
+
+# execute the requested mode with the argument supplied (if any)
+case $mode in
+	# status mode
+	st | status)
+		i=1
+		x=""
+		while [ "$i" -le "$present" ]; do
+			x="/sys/devices/system/cpu/cpu$i/online"
+			if [ -e "$x" ]; then
+				echo "cpu$i = $(cat "$x")"
+			else
+				echo "$x does not exist!"
+				echo "Is CONFIG_HOTPLUG_CPU enabled in the current kernel?"
+				break
+			fi
+
+			i=$((i + 1))
+		done
+		;;
+	# online mode
+	on | online)
+		case $arg in
+			################################
+			# set all present cpus to online
+			################################
+			all)
+				i=1
+				x=""
+				while [ "$i" -le "$present" ]; do
+					x="/sys/devices/system/cpu/cpu$i/online"
+					if [ -w "$x" ]; then
+						printf "Setting cpu%s to online" "$i"
+						printf 1 >"$x"
+						case $? in
+							0) echo "..success" ;;
+							1) echo "..failure" ;;
+							*) echo "..abnormal exit status: $?" ;;
+						esac
+					else
+						echo "ERROR: \"$x\" is not writeable."
+						break
+					fi
+					i=$((i + 1))
+				done
+				;;
+			############################################
+			# set the specified number of cpus to online
+			############################################
+			*)
+				i=1
+				x=""
+				# set the specified number to online
+				while [ "$i" -le $((arg - 1)) ]; do
+					x="/sys/devices/system/cpu/cpu$i/online"
+					if [ -w "$x" ]; then
+						printf "Setting cpu%s to online" "$i"
+						printf 1 >"$x"
+						case $? in
+							0) echo "..success" ;;
+							1) echo "..failure" ;;
+							*) echo "..abnormal exit status: $?" ;;
+						esac
+					else
+						echo "ERROR: \"$x\" is not writeable."
+						break
+					fi
+					i=$((i + 1))
+				done
+
+				# set the remaining to offline
+				while [ "$i" -le "$present" ]; do
+					x="/sys/devices/system/cpu/cpu$i/online"
+					if [ -w "$x" ]; then
+						printf "Setting cpu%s to offline" "$i"
+						printf 0 >"$x"
+						case $? in
+							0) echo "..success" ;;
+							1) echo "..failure" ;;
+							*) echo "..abnormal exit status: $?" ;;
+						esac
+					else
+						echo "ERROR: \"$x\" is not writeable."
+						break
+					fi
+					i=$((i + 1))
+				done
+				;;
+				############################################
+		esac
+		;;
+	# offline mode
+	off | offline)
+		case $arg in
+			###############################################
+			# set all cpus (except cpu0) to offline
+			###############################################
+			all)
+				i=1
+				x=""
+				while [ "$i" -le "$present" ]; do
+					x="/sys/devices/system/cpu/cpu$i/online"
+					if [ -w "$x" ]; then
+						printf "Setting cpu%s to offline" "$i"
+						printf 0 >"$x"
+						case $? in
+							0) echo "..success" ;;
+							1) echo "..failure" ;;
+							*) echo "..abnormal exit status: $?" ;;
+						esac
+					else
+						echo "ERROR: \"$x\" is not writeable."
+						break
+					fi
+					i=$((i + 1))
+				done
+				;;
+			##################################################
+			# Set the specified number of cpus to offline
+			##################################################
+			*)
+				i=1
+				x=""
+				# set the remainder of ($present-1) - $arg to online
+				# so if 5 is requested, and 15 is the total
+				# the first 10 are online and the remaining 5 are offline
+				while [ "$i" -le $((present - arg)) ]; do
+					x="/sys/devices/system/cpu/cpu$i/online"
+					if [ -w "$x" ]; then
+						printf "Setting cpu%s to online" "$i"
+						printf 1 >"$x"
+						case $? in
+							0) echo "..success" ;;
+							1) echo "..failure" ;;
+							*) echo "..abnormal exit status: $?" ;;
+						esac
+					else
+						echo "ERROR: \"$x\" is not writeable."
+						break
+					fi
+					i=$((i + 1))
+				done
+
+				# set the remaining to offline
+				while [ "$i" -le "$present" ]; do
+					x="/sys/devices/system/cpu/cpu$i/online"
+					if [ -w "$x" ]; then
+						printf "Setting cpu%s to offline" "$i"
+						printf 0 >"$x"
+						case $? in
+							0) echo "..success" ;;
+							1) echo "..failure" ;;
+							*) echo "..abnormal exit status: $?" ;;
+						esac
+					else
+						echo "ERROR: \"$x\" is not writeable."
+						break
+					fi
+					i=$((i + 1))
+				done
+				;;
+				##################################################
+		esac
+		;;
+	# good luck
+	*)
+		echo "ERROR: this shouldn't happen 🐛"
+		exit 1
+		;;
+esac
