@@ -1,4 +1,4 @@
-cpuhotplug can be used to easily set cores to either online or offline which may offer power savings in certain scenarios. For my laptop in low-power mode it shaves ~14.28% off the idle power draw. It is designed to be simple and portable (POSIX sh).
+cpuhotplug can be used to easily set cores to either online or offline which may offer power savings in certain scenarios (requires a kernel configured with CONFIG_HOTPLUG_CPU enabled; most come with it enabled already). For my laptop in low-power mode it shaves ~14.28% off the idle power draw. It is designed to be simple and portable (POSIX sh).
 
 Example usage:
 - download/create cpuhotplug
